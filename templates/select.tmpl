@@ -1,0 +1,13 @@
+<div id="{{id}}" class="select_container">
+    <label for="{{id}}-input" class="select_label">
+        {{label}}
+        <span class="optional">{{optional_str}}</span>
+    </label>
+    <select class="select" name="{{name}}" id="{{id}}-select">
+        {{#options}}
+        <option value="{{subkey}}">
+            {{value}}
+        </option>
+        {{/options}}
+    </select>
+</div>

@@ -1,0 +1,289 @@
+#!/usr/bin/python3
+
+"""Module containing the address_parser class to download address information and store it in a sqlite db"""
+
+import urllib.request, json, re, sqlite3, os, argparse, sys
+
+class address_parser:
+  '''class that downloads address form data from Google servers and stores it in sqlite-db'''
+
+  def __init__(self, path_to_db, scratch=False):
+    '''sets some values for the class'''
+    self.sqlite_file_path = path_to_db
+    self.base_url = "https://chromium-i18n.appspot.com/ssl-address/data"
+    self.elements_and_alt_title = {
+      "name":"name",
+      "fmt":"format",
+      "lfmt":"format",
+      "require":"require",
+      "zip":"code_pattern",
+      "upper":"upper_case", 
+      "sub_keys":"sub_keys", 
+      "state_name_type":"administrative_area_type", 
+      "zip_name_type":"code_type",
+      "sublocality_name_type":"sublocality_type",
+      "locality_name_type":"locality_type",
+    }
+    self.db_connected = False
+
+    if scratch:
+      self.__recreate_db()
+    else:
+      self.__open_db()
+
+  def __create_tables(self):
+    '''Creates tables in db file'''
+    self.cur.execute('CREATE TABLE IF NOT EXISTS countries(id integer PRIMARY KEY, key text NOT NULL UNIQUE, name text)')
+    self.cur.execute('CREATE TABLE IF NOT EXISTS format(id integer PRIMARY KEY, country_id integer NOT NULL, parent_id integer,key text NOT NULL, value text, FOREIGN KEY(country_id) REFERENCES countries(id), FOREIGN KEY(parent_id) REFERENCES format(id))')
+    self.cur.execute('CREATE TABLE IF NOT EXISTS defaults(id integer PRIMARY KEY, key text NOT NULL UNIQUE, value text)')
+
+  def __open_db(self):
+    '''Open DB'''
+    if not self.db_connected:
+      if os.path.exists(self.sqlite_file_path):
+        self.connection = sqlite3.connect(self.sqlite_file_path)
+        self.cur = self.connection.cursor()
+      else:
+        self.connection = sqlite3.connect(self.sqlite_file_path)
+        self.cur = self.connection.cursor()
+        self.__create_tables()
+        
+      self.db_connected = True
+
+  def __recreate_db(self):
+    '''Delete db if present, if not create only with tables'''
+    if not self.db_connected:
+      if os.path.exists(self.sqlite_file_path):
+        os.remove(self.sqlite_file_path)
+      self.__open_db()
+
+      self.db_connected = True
+
+  def __get_data(self,url = "https://chromium-i18n.appspot.com/ssl-address/data", elements = []):
+    '''Retrieve data from the website with specified elements'''
+    req = urllib.request.Request(url)
+    r = urllib.request.urlopen(req).read()
+    data = json.loads(r.decode("utf-8"))
+
+    return_data = {}
+
+    if len(elements) == 0:
+      return data
+    else:
+      for key in data:
+        if key in elements:
+          return_data[key] = data[key]
+      return return_data
+
+  def __split_data(self, data, regex = "~"):
+    '''split data at specified char'''
+    return re.split(regex, data)
+
+  def __set_data_format(self,key, country_id,value=None, parent_id=None):
+    '''insert data into format table'''
+    self.cur.execute('INSERT INTO format (country_id, parent_id, key, value) VALUES (:country_id, :parent_id, :key, :value)', {"country_id": country_id, "parent_id":parent_id, "key":key,"value":value})
+
+  def store_countries(self,countries_to_get=[]):
+    '''get all countries from the list, if the list is empty get all countries'''
+    if self.db_connected:
+      data = self.__get_data(self.base_url, ["countries"])
+      for element in self.__split_data(data["countries"]):
+        if element in countries_to_get or len(countries_to_get) == 0:
+          #get name because, it is not included in the first json string
+          url = self.base_url + "/" + urllib.parse.quote(element)
+          sub_data = self.__get_data(url, "name")
+
+          self.cur.execute('INSERT INTO countries (key,name) VALUES (:key,:name) ON CONFLICT(key) DO UPDATE SET name=:name', {"key": element,"name":sub_data['name']})
+      return True
+    else:
+      return False
+
+  def store_defaults(self):
+    '''Get default data for countries. Is needed if some data is missing in the country info.'''
+    if self.db_connected:
+      url = self.base_url + "/ZZ"
+      data = self.__get_data(url,self.elements_and_alt_title.keys())
+      for key in data:
+        self.cur.execute('INSERT INTO defaults (key, value) VALUES(:key, :value) ON CONFLICT(key) DO UPDATE SET value=:value', {"key": self.elements_and_alt_title[key], "value": data[key]})
+      return True
+    else:
+      return False
+
+  def store_country_infos(self,countries):
+    '''get the country infos for all countries in the db'''
+
+    if self.db_connected:
+      elements_and_alt_title_sub = {
+        "name":"name",
+        "lname":"name",
+        "isoid":"isoid",
+        "key":"name"
+      }
+
+      sql="SELECT id, key FROM countries WHERE key IN ({seq})".format(seq=','.join(['?']*len(countries)))
+      countries = self.cur.execute(sql,countries)
+
+      #get the whole json data from each country
+      for country in countries.fetchall():
+        url = self.base_url + "/" + urllib.parse.quote(country[1])
+        data = self.__get_data(url, self.elements_and_alt_title.keys())
+
+        #get through each dataelement
+        for element in data:
+          if "name" == element:
+            pass
+          elif "fmt" == element:
+            #set regex format for zip-code. could have different keys
+            if "lfmt" in data:
+              pass
+            else:
+              self.__set_data_format(self.elements_and_alt_title[element], country[0], data[element])
+          elif "sub_keys" == element:
+            #if subkeys are present, loop through each element and get some subdata from that subkey
+            self.__set_data_format(self.elements_and_alt_title[element], country[0])
+            group_id = self.cur.lastrowid
+
+            sub_keys = self.__split_data(data[element])
+
+            #Loop through each sub-element and download jsondata and then insert into db
+            for sub_key in sub_keys:
+              self.__set_data_format(sub_key, country[0], None, group_id)
+              parent_id = self.cur.lastrowid
+
+              sub_url = url + "/" + urllib.parse.quote(sub_key)
+              data_sub = self.__get_data(sub_url, elements_and_alt_title_sub.keys())
+
+              #Update the subkey key in the database if a better key exists in the subdata
+              if "isoid" in data_sub:
+                self.cur.execute("UPDATE format SET key=:key WHERE id=:id",{"key":data_sub["isoid"],"id":parent_id})
+              elif "lname" in data_sub:
+                self.cur.execute("UPDATE format SET key=:key WHERE id=:id",{"key":data_sub["lname"],"id":parent_id})
+                
+              #loop through each subkey element
+              for sub_el in data_sub:
+                #decide which name to insert if no name is present in subkeysdata use value of the element key
+                if "name" == sub_el:
+                  if "lname" in data_sub:
+                    pass
+                  else:
+                    self.__set_data_format(elements_and_alt_title_sub[sub_el], country[0], data_sub[sub_el],parent_id)
+                elif "key" == sub_el:
+                  if "lname" not in data_sub and "name" not in data_sub:
+                    self.__set_data_format(elements_and_alt_title_sub[sub_el], country[0], data_sub[sub_el],parent_id)
+                else:
+                    self.__set_data_format(elements_and_alt_title_sub[sub_el], country[0], data_sub[sub_el],parent_id)
+          else:
+            #simply insert any other country element into db
+            self.__set_data_format(self.elements_and_alt_title[element], country[0], data[element])
+      return True
+    else:
+      return False
+
+  def get_countries(self):
+    """Returns a dictionary with all countries"""
+    if self.db_connected:
+      data = {}
+      countries = self.cur.execute("SELECT id, key, name FROM countries ORDER BY name")
+      for country in countries.fetchall():
+          data[country[0]] = {
+              "iso_id" : country[1],
+              "name" : country[2]
+          }
+
+      return data
+    else:
+      return False
+
+  def get_country_information(self,country):
+    """returns a dictionary with all info for one country"""
+    if self.db_connected:
+      data = {}
+      infos = self.cur.execute("""SELECT format.key, format.value, format.id FROM format 
+      INNER JOIN countries ON countries.id=format.country_id 
+      WHERE countries.key = :isoid AND format.parent_id IS NULL 
+      UNION 
+      SELECT key, value, 0 FROM defaults 
+      WHERE NOT EXISTS(
+          SELECT format.key FROM format 
+          INNER JOIN countries 
+          ON countries.id=format.country_id 
+          WHERE countries.key = :isoid AND format.parent_id IS NULL AND defaults.key = format.key
+      );""",{"isoid":country})
+      for info in infos.fetchall():
+          if info[0] != "sub_keys":
+              data[info[0]] = info[1]
+          elif info[0] == "sub_keys":
+              states = {}
+              sub_el = self.cur.execute("SELECT format.key, format.value, format.id FROM format WHERE parent_id=:parent_id",{"parent_id":info[2]})
+              for sub in sub_el.fetchall():
+                  states[sub[0]] = {}
+                  state_el = self.cur.execute("SELECT format.key, format.value FROM format WHERE parent_id=:parent_id",{"parent_id":sub[2]})
+                  for state in state_el.fetchall():
+                      states[sub[0]][state[0]] = state[1]
+              data["administrative_areas"] = states
+      
+      return data
+    else:
+      return False
+
+  def delete_country_data(self,country_keys):
+    """Deletes info from a country"""
+    if self.db_connected:
+      for country in country_keys:
+        self.cur.execute("DELETE FROM format WHERE country_id IN (SELECT countries.id FROM countries WHERE countries.key = :key)",{"key":country})
+      return True
+    else:
+      return False
+
+  def delete_country_entry(self,country_keys):
+    """Deletes the country entry from the country list"""
+    if self.db_connected:
+      self.delete_country_data(country_keys)
+      for country in country_keys:
+        self.cur.execute("DELETE FROM countries WHERE key = :key", {"key":country})
+
+  def __del__(self):
+    """Commit data and close connection"""
+    if self.db_connected:
+      self.connection.commit()
+      self.connection.close()
+
+if __name__ == '__main__':
+  #setup argparse
+  infotext = 'downloads address data from Google and stores it in a sqlite file.'
+  parser = argparse.ArgumentParser(description=infotext)
+  parser.add_argument('filename',default="address_format_data.db", help="default: %(default)s")
+  parser.add_argument('-u', '--update', help='Updates all countries or, if specified, only the countries in the list', metavar='XX', nargs="*",default=argparse.SUPPRESS)
+  parser.add_argument('-rc', '--recreate', help='Creates a new database from scratch and downloads all data again', metavar='XX', nargs="*",default=argparse.SUPPRESS)
+  parser.add_argument('-ud', '--update_default', help='Updates default data',action='store_true',default=argparse.SUPPRESS)
+  parser.add_argument('-v','--version', action='version', version='%(prog)s 0.1')
+  parser.add_argument('-gc', '--get_countries', help='Get a json string with all countries',action='store_true',default=argparse.SUPPRESS)
+  parser.add_argument('-gi', '--get_country_info', help='Get json string with data from one country',default=argparse.SUPPRESS)
+  parser.add_argument('-d', '--delete_country', help='Delete country data', nargs="*", default=argparse.SUPPRESS)
+  args = parser.parse_args()
+
+  #starts for each option the correct method from the class
+  if hasattr(args, 'recreate') and hasattr(args, 'update'):
+    print("both options not compatible")
+    sys.exit(1)
+  else:
+    if hasattr(args, 'recreate'):
+      address_store = address_parser(args.filename,True)
+      address_store.store_countries(args.recreate)
+      address_store.store_defaults()
+      address_store.store_country_infos(args.recreate)
+    else:
+      address_store = address_parser(args.filename)
+
+    if hasattr(args,'delete_country'):
+      address_store.delete_country_entry(args.delete_country)
+    if hasattr(args, 'update'):
+      address_store.delete_country_data(args.update)
+      address_store.store_countries(args.update)
+      address_store.store_country_infos(args.update)
+    if hasattr(args, 'update_default'):
+      address_store.store_defaults()
+    if hasattr(args, 'get_countries'):
+      print(json.dumps(address_store.get_countries()))
+    if hasattr(args, 'get_country_info'):
+      print(json.dumps(address_store.get_country_information(args.get_country_info)))

@@ -1,0 +1,198 @@
+html, body {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: Arial;
+}
+
+div, span {
+  box-sizing: border-box;
+  float: left;
+}
+
+
+#form{
+  width:calc(100% - 10px);
+  margin: 5px;
+}
+
+#form select#countries-select{
+  width: calc(100% - 10px);
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
+
+  border-radius: 0;
+  border: 1px solid rgb(0,0,0);
+  background-color: rgb(255,255,255);
+  padding: 7px;
+  font-size: 16px;
+  outline: none;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, rgb(0,0,0) 50%), linear-gradient(135deg, rgb(0,0,0) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(1em - 1px), calc(100% - 10px) calc(1em - 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  float: left;
+  margin: 0 5px;
+}
+
+#form select#countries-select option {
+  color: rgb(0,0,0);
+}
+
+#subform_elements {
+  width: 100%;
+}
+
+#form .container_row{
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+#form .container_row textarea {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+
+  
+  resize: none;
+  width: calc(100% - 10px);
+  border-radius: 0;
+  border: 1px solid rgb(0,0,0);
+  outline: none;
+  padding: 5px 5px;
+  margin: 5px 5px 0 5px;
+}
+
+#form .container_row textarea::placeholder {
+  font-family:Arial;
+}
+
+#form .input_container {
+  width: 100%;
+}
+
+#form .input_container .input_label {
+  width: 100%;
+  float: left;
+  box-sizing: border-box;
+  padding: 10px 5px 2px 5px;
+  font-weight: bold;
+}
+
+#form .input_container .input_label .optional{
+  font-weight: normal;
+  font-size: 12px;
+  float: none;
+  color: rgb(100,100,100);
+}
+
+#form .input_container .input{
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+
+  width: calc(100% - 10px);
+  float: left;
+  box-sizing: border-box;
+  margin: 0 5px;
+  border: 1px solid rgb(0,0,0);
+  border-radius: 0;
+  outline: none;
+  padding: 5px 5px;
+}
+
+#form .input_container .input:invalid{
+  border: 1px solid rgb(241, 4, 4);
+}
+
+#form .select_container {
+  width: 100%;
+}
+
+#form .select_container .select_label {
+  width: 100%;
+  float: left;
+  box-sizing: border-box;
+  padding: 10px 5px 2px 5px;
+  font-weight: bold;
+}
+
+#form .select_container .select_label .optional{
+  font-weight: normal;
+  font-size: 12px;
+  float: none;
+  color: rgb(100,100,100);
+}
+
+#form .select_container .select{
+  width: calc(100% - 10px);
+  appearance: none;
+  -moz-appearance: none;
+  -webkit-appearance: none;
+
+  border-radius: 0;
+  border: 1px solid rgb(0,0,0);
+  background-color: rgb(255,255,255);
+  padding: 5px;
+  outline: none;
+  cursor: pointer;
+  margin: 0 5px;
+  background-image: linear-gradient(45deg, transparent 50%, rgb(0,0,0) 50%), linear-gradient(135deg, rgb(0,0,0) 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(1em - 1px), calc(100% - 10px) calc(1em - 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  float: left;
+}
+
+#form span.string{
+  display:block;
+  font-weight: bold;
+  padding: 10px 5px 0 5px;
+}
+
+#output {
+  width:calc(100% - 10px);
+  margin: 5px;
+  padding: 5px;
+}
+
+#output #result {
+  width: 100%;
+  border-radius: 0;
+  border: 1px solid rgb(0,0,0);
+  background-color: rgb(0,0,0);
+  color: rgb(255,255,255);
+  cursor: pointer;
+  padding: 7px;
+  font-size: 16px;
+  font-weight: bold;
+  outline:none;
+  margin: 0 0 10px 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+#output #result:hover {
+  background-color: rgb(255,255,255);
+  color: rgb(0,0,0);
+}
+
+#output .container_row{
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+@media (min-device-width: 500px) {
+    #form {
+      width: 500px;
+      margin-left: calc(50% - 250px);
+    }
+
+    #output {
+      width: 500px;
+      margin-left: calc(50% - 250px);
+    }
+}
